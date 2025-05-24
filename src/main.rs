@@ -1,7 +1,6 @@
 use std::fs::{self, File};
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
-use std::path::Path;
 use std::time::Duration;
 
 use xml::reader::{EventReader, XmlEvent};
@@ -21,7 +20,6 @@ fn parse_nmap_xml(xml_content: &str) -> io::Result<Vec<Host>> {
     let mut current_ip = None;
     let mut current_ports = Vec::new();
     let mut in_host = false;
-    let mut in_port = false;
 
     for event in parser {
         match event {
@@ -39,7 +37,6 @@ fn parse_nmap_xml(xml_content: &str) -> io::Result<Vec<Host>> {
                         }
                     }
                     "port" if in_host => {
-                        in_port = true;
                         for attr in attributes {
                             if attr.name.local_name == "portid" {
                                 if let Ok(port) = attr.value.parse::<u16>() {
@@ -61,9 +58,6 @@ fn parse_nmap_xml(xml_content: &str) -> io::Result<Vec<Host>> {
                             });
                         }
                         in_host = false;
-                    }
-                    "port" => {
-                        in_port = false;
                     }
                     _ => {}
                 }
@@ -142,9 +136,33 @@ fn write_results(results: &[(String, u16, String)]) -> io::Result<()> {
     Ok(())
 }
 
+// Function to prompt user for input file path
+fn get_input_file_path() -> io::Result<String> {
+    println!("Enter the path to the Nmap/Masscan XML file:");
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+    let path = input.trim();
+    if !fs::metadata(path).is_ok() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("File '{}' does not exist", path),
+        ));
+    }
+    Ok(path.to_string())
+}
+
 fn main() -> io::Result<()> {
-    // Read XML file (assuming input.xml in current directory)
-    let xml_content = fs::read_to_string("input.xml")?;
+    // Prompt user for input file path
+    let file_path = match get_input_file_path() {
+        Ok(path) => path,
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            return Err(e);
+        }
+    };
+
+    // Read XML file from user-provided path
+    let xml_content = fs::read_to_string(&file_path)?;
     let hosts = parse_nmap_xml(&xml_content)?;
 
     let mut results = Vec::new();
