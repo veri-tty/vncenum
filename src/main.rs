@@ -4,7 +4,6 @@ use std::net::{TcpStream, ToSocketAddrs};
 use std::time::Duration;
 
 use xml::reader::{EventReader, XmlEvent};
-use uuid::Uuid;
 
 // Structure to hold host and port information
 #[derive(Debug)]
@@ -152,37 +151,79 @@ fn get_input_file_path() -> io::Result<String> {
 }
 
 fn main() -> io::Result<()> {
+    println!("🔍 VNC Scanner v0.1.0");
+    println!("===================");
+    println!();
+
     // Prompt user for input file path
     let file_path = match get_input_file_path() {
         Ok(path) => path,
         Err(e) => {
-            eprintln!("Error: {}", e);
+            eprintln!("❌ Error: {}", e);
             return Err(e);
         }
     };
 
+    println!("📄 Reading XML file: {}", file_path);
+    
     // Read XML file from user-provided path
     let xml_content = fs::read_to_string(&file_path)?;
+    
+    println!("🔍 Parsing XML content...");
     let hosts = parse_nmap_xml(&xml_content)?;
 
+    let total_targets = hosts.iter().map(|h| h.ports.len()).sum::<usize>();
+    println!("🎯 Found {} hosts with {} total VNC targets", hosts.len(), total_targets);
+    println!("🚀 Starting VNC authentication scan...");
+    println!();
+
     let mut results = Vec::new();
+    let mut processed = 0;
 
     for host in hosts {
         for port in host.ports {
+            processed += 1;
+            print!("[{}/{}] Checking {}:{} ... ", processed, total_targets, host.ip, port);
+            io::stdout().flush().unwrap();
+            
             match check_vnc_authentication(&host.ip, port) {
                 Ok(status) => {
-                    println!("{}:{} - {}", host.ip, port, status);
+                    let status_icon = match status.as_str() {
+                        "open" => "🟢",
+                        "protected" => "🟡", 
+                        "down" => "🔴",
+                        _ => "❓"
+                    };
+                    println!("{} {}", status_icon, status);
                     results.push((host.ip.clone(), port, status));
                 }
                 Err(e) => {
-                    eprintln!("Error checking {}:{} - {}", host.ip, port, e);
+                    println!("🔴 Error: {}", e);
                     results.push((host.ip.clone(), port, "down".to_string()));
                 }
             }
         }
     }
 
+    println!();
+    println!("💾 Writing results to files...");
     write_results(&results)?;
+
+    let open_count = results.iter().filter(|(_, _, status)| status == "open").count();
+    let protected_count = results.iter().filter(|(_, _, status)| status == "protected").count();
+    let down_count = results.iter().filter(|(_, _, status)| status == "down").count();
+
+    println!();
+    println!("✅ Scan completed!");
+    println!("📊 Results summary:");
+    println!("   🟢 Open VNC servers: {}", open_count);
+    println!("   🟡 Protected VNC servers: {}", protected_count);
+    println!("   🔴 Down/unreachable: {}", down_count);
+    println!();
+    println!("📁 Results saved to:");
+    println!("   • results/open.txt");
+    println!("   • results/protected.txt");
+    println!("   • results/down.txt");
 
     Ok(())
 }
