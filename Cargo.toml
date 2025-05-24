@@ -1,0 +1,8 @@
+[package]
+name = "vncscan"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+xml-rs = "0.8"
+uuid = { version = "1.3", features = ["v4"] }
